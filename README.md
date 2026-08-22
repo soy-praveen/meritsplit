@@ -84,6 +84,15 @@ genlayer network set testnet-bradbury
 genlayer deploy --contract contracts/meritsplit.py
 ```
 
+## Live on-chain demo
+
+The deployed contract runs a dogfood pool (pool 1) whose data source is **this repository's own contributor data** (`api.github.com/repos/soy-praveen/meritsplit/contributors`). A real distribution has been executed by Bradbury's validator set — they fetched the GitHub API, extracted the contribution counts via LLM consensus, and paid out 0.3 GEN:
+
+- Distribution tx: `0xce78f3cd58a214c8a0232d18cd77bcdc5980647b6abb3288f511a582151719d8`
+- On-chain audit record: `get_distributions(1)` → `{"metrics": {"soy-praveen": 1}, "shares": {"soy-praveen": "300000000000000000"}}`
+
+Anyone can verify the metric against the public source, and anyone can `fund(1)` and later trigger `distribute(1)` themselves.
+
 ## License
 
 MIT
