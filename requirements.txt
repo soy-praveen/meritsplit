@@ -1,0 +1,2 @@
+genlayer-test[sim]>=0.29.2
+pytest>=8.0
