@@ -14,7 +14,8 @@ create_pool ─► fund (payable, by anyone) ─► distribute (permissionless)
                                              ▼
                           each validator: fetch data_url
                                           extract {handle: metric} via LLM
-                                          compare with leader (tolerance)
+                                          canonical sorted-JSON metrics
+                                             (strict equality)
                                              │ consensus
                                              ▼
                           deterministic Python: proportional shares
@@ -88,7 +89,7 @@ genlayer deploy --contract contracts/meritsplit.py
 
 The deployed contract runs a dogfood pool (pool 1) whose data source is **this repository's own contributor data** (`api.github.com/repos/soy-praveen/meritsplit/contributors`). A real distribution has been executed by Bradbury's validator set — they fetched the GitHub API, extracted the contribution counts via LLM consensus, and paid out 0.3 GEN:
 
-- On-chain audit record: `get_distributions(1)` → `{"metrics": {"soy-praveen": 1}, "shares": {"soy-praveen": "300000000000000000"}}`
+- On-chain audit record: `get_distributions(1)` → `{"metrics": {"soy-praveen": 2}, "shares": {"soy-praveen": "300000000000000000"}}`
 
 Anyone can verify the metric against the public source, and anyone can `fund(1)` and later trigger `distribute(1)` themselves.
 
