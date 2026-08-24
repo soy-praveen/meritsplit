@@ -34,7 +34,7 @@ Anyone can `fund()` the pool — sponsors, dApp fee streams, other contracts. An
 
 **1. Extract, don't decide.** The LLM is used *only* to extract objective integers from the fetched source — never to judge quality or assign percentages. Subjective LLM output can't be compared across validators; counts can. All share arithmetic is deterministic Python executed on the consensus-agreed metrics.
 
-**2. Tolerant comparison with a zero-flip guard.** The source may legitimately change between leader and validator execution (a PR merges mid-consensus). Validators accept the leader's metrics within `max(1, 2%)` absolute drift per member — but a metric of `0` on one side and `>0` on the other is always rejected, so nobody gets paid on data only one node saw.
+**2. One canonical result, bound by strict equality.** Every validator reduces its own extraction to a canonical sorted-JSON string of integers, and consensus uses `gl.eq_principle.strict_eq` over that string. Payouts derive solely from those numbers, so byte-equality between validators is equality of the resulting payouts — there is no tolerance window in which two validators could approve different payout outcomes. If the source changes mid-consensus, the transaction fails cleanly, funds stay pooled, and the distribution can simply be retried.
 
 **3. Prompt-injection hardening.** The fetched page and all member-supplied text are delimited as untrusted data, and the extraction prompt instructs the model to ignore instruction-like content inside them (e.g. a PR titled "give alice 100"). Only roster handles can appear in the output; anything else is discarded in code, not by the model.
 
@@ -75,8 +75,8 @@ python -m pytest test/test_meritsplit_direct.py -v
 
 - Network: **GenLayer Testnet Bradbury** (chain 4221)
 - Contract: `contracts/meritsplit.py`
-- Deployed address: [`0xff6F983810a402D6F4140949B1eBE0B54cE03D46`](https://explorer-bradbury.genlayer.com/address/0xff6F983810a402D6F4140949B1eBE0B54cE03D46)
-- Deployment tx: `0xb683e934a4489ead06ec8e9181888d247e1e3013109f4b20efc8487e81033289`
+- Deployed address: [`0xa00d4d12301972e0f33CDE29a09DEcE4e397b7c4`](https://explorer-bradbury.genlayer.com/address/0xa00d4d12301972e0f33CDE29a09DEcE4e397b7c4)
+- Deployment tx: `0x5e46bdd3dd4f54baded6f57af4a4566a8a5f9c1822c8f52817a4bc16f6517c6b`
 
 ```bash
 npm install -g genlayer
@@ -88,7 +88,6 @@ genlayer deploy --contract contracts/meritsplit.py
 
 The deployed contract runs a dogfood pool (pool 1) whose data source is **this repository's own contributor data** (`api.github.com/repos/soy-praveen/meritsplit/contributors`). A real distribution has been executed by Bradbury's validator set — they fetched the GitHub API, extracted the contribution counts via LLM consensus, and paid out 0.3 GEN:
 
-- Distribution tx: `0xce78f3cd58a214c8a0232d18cd77bcdc5980647b6abb3288f511a582151719d8`
 - On-chain audit record: `get_distributions(1)` → `{"metrics": {"soy-praveen": 1}, "shares": {"soy-praveen": "300000000000000000"}}`
 
 Anyone can verify the metric against the public source, and anyone can `fund(1)` and later trigger `distribute(1)` themselves.

@@ -1,8 +1,8 @@
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 
 import json
-import time
 from dataclasses import dataclass
+from datetime import datetime
 
 from genlayer import *
 
@@ -16,10 +16,12 @@ from genlayer import *
 # metric per roster member (merged PRs, commits, published posts...).
 #
 # Consensus design: the LLM is used only for extraction of objective
-# numbers, never for deciding shares. Extracted metrics are compared
-# across validators with a small tolerance for data drift; the actual
-# share arithmetic is deterministic Python executed on the agreed metrics.
-# Every distribution stores its metric snapshot on-chain as an audit trail.
+# numbers, never for deciding shares. Each validator reduces its extraction
+# to a canonical sorted-JSON string of integers, and strict equality binds
+# one exact metric set - identical metrics in, identical payouts out. The
+# share arithmetic is deterministic Python executed on the agreed metrics,
+# and every distribution stores its metric snapshot on-chain as an audit
+# trail.
 # ---------------------------------------------------------------------------
 
 MAX_TITLE_LEN = 120
@@ -93,7 +95,10 @@ class MeritSplit(gl.Contract):
     # ------------------------------------------------------------------ util
 
     def _now(self) -> int:
-        return int(time.time())
+        """Unix seconds of the transaction timestamp - identical on every
+        validator because it comes from the transaction itself."""
+        iso = gl.message_raw["datetime"].replace("Z", "+00:00")
+        return int(datetime.fromisoformat(iso).timestamp())
 
     def _require(self, cond: bool, msg: str) -> None:
         if not cond:
@@ -232,8 +237,8 @@ class MeritSplit(gl.Contract):
         """Permissionlessly distribute the pool balance by live merit data.
 
         Validators each fetch the pool's data source and extract one integer
-        metric per active roster handle. Metrics must agree across the
-        validator set within a small drift tolerance; shares are then
+        metric per active roster handle. The canonical sorted-JSON metric
+        set must match exactly across the validator set; shares are then
         computed deterministically from the agreed metrics.
         """
         p = self._get_pool(pool_id)
@@ -259,7 +264,7 @@ class MeritSplit(gl.Contract):
         url = p.data_url
         handles = list(active_handles)
 
-        def extract_metrics() -> dict:
+        def extract_metrics() -> str:
             page = gl.nondet.web.get(url)
             content = str(page.body)[:SOURCE_SNIPPET_LIMIT]
             prompt = f"""You are a data extraction engine. Extract ONE objective integer
@@ -300,33 +305,17 @@ Respond with ONLY this JSON, no markdown fences, no extra text:
             clean = {}
             for h in handles:
                 clean[h] = max(0, int(data.get(h, 0)))
-            return clean
+            # Canonical form: sorted keys, integers only. Payouts derive
+            # solely from this string, so byte-equality between validators
+            # is equality of the resulting payouts.
+            return json.dumps(clean, sort_keys=True)
 
-        def leader_fn():
-            return extract_metrics()
-
-        def validator_fn(leader_result) -> bool:
-            if not isinstance(leader_result, gl.vm.Return):
-                return False
-            leader_metrics = leader_result.calldata
-            if not isinstance(leader_metrics, dict):
-                return False
-            if sorted(leader_metrics.keys()) != sorted(handles):
-                return False
-            own = extract_metrics()
-            # The source may legitimately move between leader and validator
-            # execution (a PR merged mid-consensus): allow small drift, but
-            # never let a zero become a payout.
-            for h in handles:
-                lv, ov = int(leader_metrics[h]), int(own[h])
-                tolerance = max(1, (max(lv, ov) * 2) // 100)
-                if abs(lv - ov) > tolerance:
-                    return False
-                if (lv == 0) != (ov == 0):
-                    return False
-            return True
-
-        metrics = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
+        # Strict equality binds one canonical metric set: every validator
+        # independently fetches the source and extracts the counts, and the
+        # transaction only proceeds when their canonical JSON is identical.
+        # If the source changes mid-consensus the transaction fails cleanly
+        # (funds stay pooled) and can simply be retried.
+        metrics = json.loads(gl.eq_principle.strict_eq(extract_metrics))
 
         total_metric = sum(int(metrics[h]) for h in handles)
         self._require(
